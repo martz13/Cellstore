@@ -1,0 +1,126 @@
+/* Ventana principal con la imagen de fondo */
+/* Ventana principal con la imagen de fondo adaptativa */
+QMainWindow {
+    border-image: url('assets/images/bg.png') 0 0 0 0 stretch stretch;
+}
+
+/* Caja del Login (Efecto cristal oscuro) */
+QFrame#LoginBox {
+    background-color: rgba(25, 25, 30, 220);
+    border: 2px solid #2077D4;
+    border-radius: 15px;
+}
+
+/* Textos generales */
+QLabel {
+    color: #FFFFFF;
+    font-size: 14px;
+}
+
+QToolTip {
+        background-color: #f0f0f0;
+        color: #000000;
+        border: 1px solid #2077D4;
+        font-size: 12px;
+        padding: 4px;
+    }
+
+
+
+/* Título de Iniciar Sesión */
+QLabel#Title {
+    color: #2077D4;
+    font-size: 22px;
+    font-weight: bold;
+}
+
+/* Entradas de texto (Correo y Contraseña) */
+QLineEdit {
+    background-color: rgba(15, 15, 20, 200);
+    border: 1px solid #555555;
+    border-radius: 5px;
+    padding: 10px;
+    color: white;
+    font-size: 14px;
+}
+
+QLineEdit:focus {
+    border: 1px solid #2077D4;
+    background-color: rgba(20, 20, 30, 255);
+}
+
+/* Botón principal */
+QPushButton#BtnPrimary {
+    background-color: #2077D4;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 12px;
+    font-size: 15px;
+    font-weight: bold;
+}
+
+QPushButton#BtnPrimary:hover {
+    background-color: #1a5ea8;
+}
+
+/* Botón tipo Link (Olvidó contraseña) */
+QPushButton#BtnLink {
+    background-color: transparent;
+    color: #2077D4;
+    border: none;
+    text-decoration: underline;
+    font-size: 13px;
+}
+
+QPushButton#BtnLink:hover {
+    color: #4da6ff;
+}
+
+/* ================= MENU LATERAL ================= */
+QFrame#SideMenu {
+    background-color: rgba(15, 15, 20, 240);
+    border-right: 1px solid #2077D4;
+}
+
+QPushButton.MenuButton {
+    background-color: transparent;
+    color: #FFFFFF;
+    text-align: left;
+    padding: 10px 15px;
+    border: none;
+    font-size: 14px;
+    border-radius: 5px;
+}
+
+QPushButton.MenuButton:hover {
+    background-color: rgba(32, 119, 212, 100);
+}
+
+QPushButton.MenuButton:checked {
+    background-color: #2077D4;
+    color: white;
+    font-weight: bold;
+}
+
+/* ================= TABLA DE USUARIOS ================= */
+QTableWidget {
+    background-color: rgba(15, 15, 20, 200);
+    color: white;
+    gridline-color: #2077D4;
+    border: 1px solid #2077D4;
+    border-radius: 5px;
+    font-size: 13px;
+}
+
+QHeaderView::section {
+    background-color: rgba(32, 119, 212, 200);
+    color: white;
+    padding: 5px;
+    border: 1px solid #1a5ea8;
+    font-weight: bold;
+}
+
+QTableWidget::item:selected {
+    background-color: rgba(32, 119, 212, 150);
+}
