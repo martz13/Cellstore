@@ -84,6 +84,21 @@ class DatosEmpresaView(QWidget):
         self.btn_descargar_bd.clicked.connect(self.descargar_bd)
         header_layout.addWidget(self.btn_descargar_bd)
 
+# --- NUEVO BOTÓN: CARGAR BD ---
+        self.btn_cargar_bd = QPushButton("  Cargar BD")
+        self.btn_cargar_bd.setIcon(qta.icon('fa5s.upload', color='black'))
+        self.btn_cargar_bd.setFixedWidth(180)
+        self.btn_cargar_bd.setStyleSheet("""
+            QPushButton {
+                background-color: #f0ad4e; color: black; font-weight: bold;
+                padding: 10px 15px; border-radius: 5px; border: none; font-size: 14px;
+            }
+            QPushButton:hover { background-color: #ec971f; }
+        """)
+        self.btn_cargar_bd.setCursor(Qt.PointingHandCursor)
+        self.btn_cargar_bd.clicked.connect(self.cargar_bd)
+        header_layout.addWidget(self.btn_cargar_bd)
+
         container_layout.addLayout(header_layout)
 
         # --- CONTENEDOR CENTRAL (Formulario) ---
@@ -322,3 +337,40 @@ class DatosEmpresaView(QWidget):
                 QMessageBox.information(self, "Éxito", f"✅ Base de datos respaldada correctamente en:\n\n{ruta_destino}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Ocurrió un error al copiar la base de datos:\n{e}")
+
+    def cargar_bd(self):
+        """Permite al usuario cargar un respaldo de la BD y reemplazar la actual."""
+        respuesta = QMessageBox.question(
+            self, 
+            "Advertencia de Restauración", 
+            "⚠️ ¡ATENCIÓN!\n\nSe eliminará TODA la información actual del sistema y se reemplazará con el archivo que selecciones.\n\n¿Estás completamente seguro de que deseas continuar?", 
+            QMessageBox.Yes | QMessageBox.No
+        )
+        
+        if respuesta == QMessageBox.Yes:
+            # Abrir diálogo para seleccionar el archivo .db
+            ruta_archivo, _ = QFileDialog.getOpenFileName(
+                self,
+                "Seleccionar Respaldo de Base de Datos",
+                "",
+                "Base de Datos SQLite (*.db)"
+            )
+
+            if ruta_archivo:
+                try:
+                    ruta_destino = get_db_path()
+                    
+                    # Sobreescribir la base de datos actual con el archivo seleccionado
+                    shutil.copy2(ruta_archivo, ruta_destino)
+                    
+                    QMessageBox.information(
+                        self, 
+                        "Restauración Exitosa", 
+                        "✅ Base de datos cargada correctamente.\n\nPor favor, REINICIA LA APLICACIÓN por completo para que todos los módulos reflejen la nueva información."
+                    )
+                    
+                    # Recargamos la vista actual por si los datos de la empresa cambiaron
+                    self.cargar_datos() 
+                    
+                except Exception as e:
+                    QMessageBox.critical(self, "Error", f"Ocurrió un error al intentar restaurar la base de datos:\n{e}")
