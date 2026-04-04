@@ -28,23 +28,24 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path "assets\tools" -Force
 
-          # SumatraPDF — impresión silenciosa en Windows
-          Invoke-WebRequest -Uri "https://www.sumatrapdfreader.org/dl/SumatraPDF-64.exe" -OutFile "assets\tools\SumatraPDF.exe"
+          # SumatraPDF — Descarga de archivo .zip estable y extracción del portable
+          Invoke-WebRequest -Uri "https://www.sumatrapdfreader.org/dl/rel/3.5.2/SumatraPDF-3.5.2-64.zip" -OutFile "sumatra.zip"
+          Expand-Archive -Path "sumatra.zip" -DestinationPath "assets\tools\sumatra_temp" -Force
+          Move-Item -Path "assets\tools\sumatra_temp\SumatraPDF-3.5.2-64.exe" -Destination "assets\tools\SumatraPDF.exe" -Force
+          Remove-Item -Path "assets\tools\sumatra_temp" -Recurse -Force
+          Remove-Item -Path "sumatra.zip" -Force
 
           # Poppler — requerido por pdf2image para vista previa
           Invoke-WebRequest -Uri "https://github.com/oschwartz10612/poppler-windows/releases/download/v24.02.0-0/Release-24.02.0-0.zip" -OutFile "poppler.zip"
           Expand-Archive -Path "poppler.zip" -DestinationPath "assets\tools\poppler" -Force
 
-      # Paso de diagnóstico: confirma dónde quedó pdftoppm.exe dentro del zip extraído.
-      # Úsalo para verificar que _get_poppler_path() apunta al lugar correcto.
-      # Puedes eliminarlo una vez que el build funcione correctamente.
       - name: Verificar estructura interna de Poppler
         run: |
           Get-ChildItem -Path "assets\tools\poppler" -Recurse -Filter "pdftoppm.exe" | Select-Object FullName
 
-      - name: Crear Ejecutable Principal (CellStore.exe)
+      - name: Crear Ejecutable Principal (CellStore en modo OneDir)
         run: |
-          pyinstaller --onefile --windowed `
+          pyinstaller --onedir --windowed `
             --name "CellStore" `
             --icon="assets/images/icono.ico" `
             --add-data "assets;assets" `
@@ -57,7 +58,9 @@ jobs:
       - name: Preparar carpeta de entrega
         run: |
           New-Item -ItemType Directory -Path "Entrega_Final" -Force
-          Copy-Item "dist\CellStore.exe" -Destination "Entrega_Final\"
+          # Como es onedir, PyInstaller crea la carpeta dist\CellStore
+          # Copiamos todo el contenido de esa carpeta a Entrega_Final
+          Copy-Item -Path "dist\CellStore\*" -Destination "Entrega_Final\" -Recurse -Force
 
       - name: Subir ejecutable a GitHub
         uses: actions/upload-artifact@v4
