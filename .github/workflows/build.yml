@@ -24,14 +24,40 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Descargar herramientas externas (SumatraPDF y Poppler)
+        run: |
+          New-Item -ItemType Directory -Path "assets\tools" -Force
+
+          # SumatraPDF — impresión silenciosa en Windows
+          Invoke-WebRequest -Uri "https://www.sumatrapdfreader.org/dl/SumatraPDF-64.exe" -OutFile "assets\tools\SumatraPDF.exe"
+
+          # Poppler — requerido por pdf2image para vista previa
+          Invoke-WebRequest -Uri "https://github.com/oschwartz10612/poppler-windows/releases/download/v24.02.0-0/Release-24.02.0-0.zip" -OutFile "poppler.zip"
+          Expand-Archive -Path "poppler.zip" -DestinationPath "assets\tools\poppler" -Force
+
+      # Paso de diagnóstico: confirma dónde quedó pdftoppm.exe dentro del zip extraído.
+      # Úsalo para verificar que _get_poppler_path() apunta al lugar correcto.
+      # Puedes eliminarlo una vez que el build funcione correctamente.
+      - name: Verificar estructura interna de Poppler
+        run: |
+          Get-ChildItem -Path "assets\tools\poppler" -Recurse -Filter "pdftoppm.exe" | Select-Object FullName
+
       - name: Crear Ejecutable Principal (CellStore.exe)
         run: |
-          pyinstaller --onefile --windowed --name "CellStore" --icon="assets/images/icono.ico" --add-data "assets;assets" --add-data "database;database" --add-data "styles;styles" --add-data "utils;utils" --add-data "views;views" main.py
+          pyinstaller --onefile --windowed `
+            --name "CellStore" `
+            --icon="assets/images/icono.ico" `
+            --add-data "assets;assets" `
+            --add-data "database;database" `
+            --add-data "styles;styles" `
+            --add-data "utils;utils" `
+            --add-data "views;views" `
+            main.py
 
       - name: Preparar carpeta de entrega
         run: |
-          mkdir Entrega_Final
-          copy "dist\CellStore.exe" Entrega_Final\
+          New-Item -ItemType Directory -Path "Entrega_Final" -Force
+          Copy-Item "dist\CellStore.exe" -Destination "Entrega_Final\"
 
       - name: Subir ejecutable a GitHub
         uses: actions/upload-artifact@v4
