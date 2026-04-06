@@ -27,9 +27,9 @@ ANCHO_MM  = 58.0   # ancho del rollo térmico
 MARG_MM   =  2.0   # margen lateral (izq y der)
 UTIL_MM   = ANCHO_MM - MARG_MM * 2   # 54 mm útiles
 
-# Fuentes Courier (monoespaciadas, estándar en tickets)
-F_NORM = "Courier"
-F_BOLD = "Courier-Bold"
+# Fuentes modernas, gruesas y elegantes (imprimen negro puro sin verse "gris")
+F_NORM = "Helvetica-Bold"
+F_BOLD = "Helvetica-Bold"
 
 # Tamaños
 FS_SM  =  8   # secundario
@@ -145,6 +145,7 @@ class GeneradorTicket:
         buf = BytesIO()
         c = canvas.Canvas(buf, pagesize=(ANCHO_MM * mm, alto))
         c.setTitle(f"Ticket {num}")
+        c.setFillColorRGB(0, 0, 0) # Fuerza el color 100% negro puro
 
         # y empieza desde arriba
         y = alto - 4 * mm

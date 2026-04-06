@@ -319,11 +319,10 @@ class CotizacionesView(QWidget):
             btn_ticket = self.crear_boton_accion('fa5s.receipt', '#2077D4', "Ticket")
             btn_pdf = self.crear_boton_accion('fa5s.file-pdf', '#ff4d4d', "PDF")
 
-            # REEMPLAZAR ESTO:
-            btn_ticket.clicked.connect(lambda *args, cid=cot[0]: GeneradorTicket.generar_ticket(self, cid))
-            #btn_pdf.clicked.connect(lambda *args, cid=cot[1]: self.accion_placeholder(f"Generar PDF para ID {cid}"))
-            # REEMPLAZA ESTA LÍNEA (Historial de acordeón)
+            # CORRECCIÓN: En el historial, el ID siempre es cot[1]
+            btn_ticket.clicked.connect(lambda *args, cid=cot[1]: GeneradorTicket.generar_ticket(self, cid))
             btn_pdf.clicked.connect(lambda *args, cid=cot[1]: GeneradorPDF.generar_cotizacion(self, cid))
+            
             lay_acciones.addWidget(btn_ticket)
             lay_acciones.addWidget(btn_pdf)
             lay_acciones.addStretch() 
