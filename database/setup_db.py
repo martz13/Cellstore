@@ -78,14 +78,20 @@ def create_database(db_name='database/cellstore.db'):
         );
 
         -- 6. Displays (Enrique Luna)
-        CREATE TABLE IF NOT EXISTS inventario_displays (
+        -- 8. Historial de Ventas de Displays
+        CREATE TABLE IF NOT EXISTS ventas_displays (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            marca TEXT NOT NULL,
-            modelo TEXT NOT NULL,
-            cantidad INTEGER NOT NULL DEFAULT 0,
-            precio_mayorista REAL NOT NULL,
-            precio_publico REAL NOT NULL,
-            activo INTEGER NOT NULL DEFAULT 1
+            usuario_id INTEGER NOT NULL,
+            display_id INTEGER NOT NULL,
+            cantidad INTEGER NOT NULL,
+            precio_unitario REAL NOT NULL,
+            total REAL NOT NULL,
+            tipo_precio TEXT NOT NULL,
+            cliente_nombre TEXT DEFAULT '',    -- NUEVO
+            cliente_telefono TEXT DEFAULT '',  -- NUEVO
+            fecha_hora TEXT NOT NULL DEFAULT (DATETIME('now', 'localtime')),
+            FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
+            FOREIGN KEY (display_id) REFERENCES inventario_displays(id)
         );
 
         -- 7. Movimientos (Log)
@@ -180,5 +186,36 @@ def create_database(db_name='database/cellstore.db'):
             conn.close()
             print("[-] Conexión a SQLite cerrada.")
 
+
+# ... (todo tu código de create_database) ...
+
+def actualizar_base_datos(db_name):
+    """
+    Intenta agregar las columnas nuevas a la base de datos existente.
+    Si la columna ya existe, SQLite lanza un OperationalError y lo ignoramos.
+    De esta forma, la BD de tus socios se actualiza sin borrar sus datos.
+    """
+    conn = sqlite3.connect(db_name)
+    cursor = conn.cursor()
+    
+    # Lista de consultas para agregar campos nuevos que has ido creando
+    actualizaciones = [
+        "ALTER TABLE datos_empresa ADD COLUMN slogan TEXT NOT NULL DEFAULT '\"Todo en una solución\"'",
+        "ALTER TABLE usuarios ADD COLUMN activo INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE ventas_displays ADD COLUMN cliente_nombre TEXT DEFAULT ''",
+        "ALTER TABLE ventas_displays ADD COLUMN cliente_telefono TEXT DEFAULT ''"
+    ]
+    
+    for query in actualizaciones:
+        try:
+            cursor.execute(query)
+        except sqlite3.OperationalError:
+            # La columna ya existe, no hacemos nada y pasamos a la siguiente
+            pass
+            
+    conn.commit()
+    conn.close()
+
 if __name__ == '__main__':
     create_database()
+

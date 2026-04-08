@@ -3,7 +3,7 @@ import sys
 import sqlite3
 
 # Importamos tu función creadora de la base de datos
-from database.setup_db import create_database
+from database.setup_db import create_database, actualizar_base_datos
 
 def get_asset_path(relative_path):
     """Devuelve la ruta absoluta a los recursos (imágenes, estilos)."""
@@ -26,14 +26,18 @@ def get_db_path():
     return os.path.join(db_dir, 'cellstore.db')
 
 def setup_database_for_app():
-    """Ejecuta el script SQL para crear la BD y las tablas si no existe aún."""
+    """Ejecuta el script SQL para crear la BD si no existe, o la actualiza si ya existe."""
     ruta_destino = get_db_path()
     
     if not os.path.exists(ruta_destino):
         print(f"[*] La base de datos no existe en el sistema. Creando una nueva...")
-        # Llamamos a tu función de setup_db.py mandándole la ruta final
         create_database(ruta_destino)
         print(f"[-] Base de datos generada y lista en: {ruta_destino}")
+    else:
+        # SI EL ARCHIVO YA EXISTE, APLICAMOS LAS MIGRACIONES SIN BORRAR NADA
+        print(f"[*] Base de datos encontrada. Comprobando actualizaciones...")
+        actualizar_base_datos(ruta_destino)
+        print(f"[-] Base de datos verificada y actualizada (si aplicaba).")
 
 def get_connection():
     """Retorna la conexión a la base de datos escribible."""

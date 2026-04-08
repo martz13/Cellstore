@@ -96,7 +96,7 @@ class GeneradorTicket:
 
     @staticmethod
     def _pdf_bytes(empresa, maestro, detalles,
-                   cotizacion_id, logo_path) -> bytes:
+                   cotizacion_id, logo_path,tipo="COTIZACION") -> bytes:
         """
         Genera el ticket con ReportLab y retorna los bytes del PDF.
         La altura de la página se calcula dinámicamente para que
@@ -204,13 +204,20 @@ class GeneradorTicket:
         _hr(c, y); y -= HR * mm
 
         # ── Totales ───────────────────────────────────────────────
-        par("Subtotal:", f"${maestro[3]:.2f}")
-        par("Anticipo:", f"-${maestro[4]:.2f}")
+        if tipo == "COTIZACION":
+            par("Subtotal:", f"${maestro[3]:.2f}")
+            par("Anticipo:", f"-${maestro[4]:.2f}")
 
-        _izq(c, y, "RESTANTE:", F_BOLD, FS_LG)
-        y -= IL * mm
-        _der(c, y, f"${maestro[5]:.2f}", F_BOLD, FS_LG)
-        y -= IL * mm
+            _izq(c, y, "RESTANTE:", F_BOLD, FS_LG)
+            y -= IL * mm
+            _der(c, y, f"${maestro[5]:.2f}", F_BOLD, FS_LG)
+            y -= IL * mm
+        else:
+            # SI ES UN TICKET DE DISPLAY, SOLO MOSTRAMOS EL TOTAL
+            _izq(c, y, "TOTAL A PAGAR:", F_BOLD, FS_LG)
+            y -= IL * mm
+            _der(c, y, f"${maestro[3]:.2f}", F_BOLD, FS_LG)
+            y -= IL * mm
 
         # ── Separador ─────────────────────────────────────────────
         _hr(c, y); y -= HR * mm
@@ -256,130 +263,106 @@ class GeneradorTicket:
         # Desarrollo en Linux/macOS: poppler ya está en PATH
         return None
 
+# ── Vista previa 100% Compatible Windows/Linux ────────────────
     @staticmethod
     def _previsualizar(parent_widget, pdf_bytes: bytes, num: str):
+        """Abre el PDF en el visor nativo del sistema sin usar librerías externas problemáticas."""
         try:
-            from pdf2image import convert_from_bytes
-
-            poppler_path = GeneradorTicket._get_poppler_path()
-
-            kwargs = {"dpi": 200}
-            if poppler_path:
-                kwargs["poppler_path"] = poppler_path
-
-            imagenes = convert_from_bytes(pdf_bytes, **kwargs)
-            if not imagenes:
-                raise RuntimeError("No se renderizó ninguna página.")
-
-            buf2 = BytesIO()
-            imagenes[0].save(buf2, format="PNG")
-            buf2.seek(0)
-
-            pix = QPixmap()
-            pix.loadFromData(buf2.read())
-
-            dlg = QDialog(parent_widget)
-            dlg.setWindowTitle(f"Vista previa — Ticket {num}")
-            dlg.setModal(True)
-
-            lbl = QLabel()
-            lbl.setPixmap(pix)
-            lbl.setAlignment(Qt.AlignCenter)
-
-            scroll = QScrollArea()
-            scroll.setWidget(lbl)
-            scroll.setWidgetResizable(True)
-            scroll.setMinimumSize(300, 520)
-
-            btn = QPushButton("Cerrar")
-            btn.clicked.connect(dlg.accept)
-
-            lay = QVBoxLayout(dlg)
-            lay.addWidget(scroll)
-            lay.addWidget(btn)
-            dlg.exec()
-
-        except ImportError:
-            QMessageBox.information(
-                parent_widget,
-                "Vista previa no disponible",
-                "Instala pdf2image:\n\n  pip install pdf2image",
-            )
+            # Crear un archivo temporal seguro
+            fd, temp_path = tempfile.mkstemp(suffix=".pdf", prefix=f"Preview_Ticket_{num}_")
+            with os.fdopen(fd, 'wb') as f:
+                f.write(pdf_bytes)
+            
+            # Abrir con el programa predeterminado del SO
+            if sys.platform == "win32":
+                os.startfile(temp_path)
+            elif sys.platform == "darwin":
+                subprocess.call(["open", temp_path])
+            else:
+                subprocess.call(["xdg-open", temp_path])
+                
         except Exception as e:
-            QMessageBox.warning(
-                parent_widget, "Vista previa", f"No se pudo mostrar:\n{e}"
-            )
+            QMessageBox.warning(parent_widget, "Vista Previa", f"No se pudo abrir la vista previa:\n{e}")
 
-    # ── Punto de entrada principal ────────────────────────────────
+    # ── Punto de entrada principal MULTIUSO ───────────────────────
 
     @staticmethod
-    def generar_ticket(parent_widget, cotizacion_id):
+    def generar_ticket(parent_widget, id_referencia, tipo="COTIZACION"):
+        """Si tipo='COTIZACION' busca en cotizaciones. Si tipo='DISPLAY' busca en ventas_displays."""
         conn = None
         try:
-            # 1. Leer BD
             conn = get_connection()
             cursor = conn.cursor()
 
-            cursor.execute(
-                "SELECT nombre, direccion, telefono, slogan "
-                "FROM datos_empresa WHERE id=1"
-            )
-            empresa = cursor.fetchone()
+            # 1. Leer Datos de Empresa
+            cursor.execute("SELECT nombre, direccion, telefono, slogan FROM datos_empresa WHERE id=1")
+            empresa = cursor.fetchone() or ("CELL STORE", "Dir", "Tel", "Slogan")
 
-            cursor.execute(
-                """SELECT cliente_nombre, cliente_telefono, fecha_hora,
-                          total_precio_final, monto_adelanto, monto_restante
-                   FROM cotizaciones_maestro WHERE id=?""",
-                (cotizacion_id,),
-            )
-            maestro = cursor.fetchone()
+            detalles = []
+            
+            # 2. Lógica dependiendo del tipo de ticket
+            if tipo == "COTIZACION":
+                cursor.execute("""SELECT cliente_nombre, cliente_telefono, fecha_hora,
+                                      total_precio_final, monto_adelanto, monto_restante
+                               FROM cotizaciones_maestro WHERE id=?""", (id_referencia,))
+                maestro = cursor.fetchone()
+                
+                cursor.execute("""SELECT marca, modelo, trabajo_a_realizar, precio_cliente
+                               FROM cotizaciones_detalle WHERE cotizacion_id=?""", (id_referencia,))
+                detalles = cursor.fetchall()
+                
+            elif tipo == "DISPLAY":
+                # Maestro para Display: [0:Cliente, 1:Tel, 2:Fecha, 3:Total, 4:Adelanto(0), 5:Restante(0)]
+                cursor.execute("""
+                    SELECT v.cliente_nombre, v.cliente_telefono, v.fecha_hora, v.total
+                    FROM ventas_displays v WHERE v.id=?
+                """, (id_referencia,))
+                v_data = cursor.fetchone()
+                
+                if v_data:
+                    # Adaptamos los datos para que encajen en el mismo formato
+                    maestro = (v_data[0] or "Venta de Mostrador", v_data[1], v_data[2], v_data[3], v_data[3], 0.0)
+                    
+                    cursor.execute("""
+                        SELECT d.marca, d.modelo, v.cantidad, v.precio_unitario 
+                        FROM ventas_displays v JOIN inventario_displays d ON v.display_id = d.id 
+                        WHERE v.id=?
+                    """, (id_referencia,))
+                    # Detalle para Display: [0:Marca, 1:Modelo, 2: "X piezas", 3: Total del renglón]
+                    for row in cursor.fetchall():
+                        detalles.append((row[0], row[1], f"{row[2]} pz(s)", row[2] * row[3]))
+                else:
+                    maestro = None
 
-            cursor.execute(
-                """SELECT marca, modelo, trabajo_a_realizar, precio_cliente
-                   FROM cotizaciones_detalle WHERE cotizacion_id=?""",
-                (cotizacion_id,),
-            )
-            detalles = cursor.fetchall()
             conn.close()
             conn = None
 
-            # 2. Validar
             if not maestro:
-                QMessageBox.warning(
-                    parent_widget, "Error", "No se encontró la cotización."
-                )
+                QMessageBox.warning(parent_widget, "Error", "No se encontró el registro especificado.")
                 return
 
-            if not empresa:
-                empresa = (
-                    "CELL STORE TECHNOLOGY",
-                    "Dirección no configurada",
-                    "Tel no configurado",
-                    "Tu solución tecnológica",
-                )
+            # Si no hay teléfono, lo ocultamos limpiando el texto
+            telefono_cliente = maestro[1] if maestro[1] else ""
+            maestro = list(maestro)
+            maestro[1] = telefono_cliente
 
-            logo_path = get_asset_path(
-                "assets/images/icono2.jpg"
-            ).replace("\\", "/")
+            logo_path = get_asset_path("assets/images/icono2.jpg").replace("\\", "/")
+            num = str(id_referencia).zfill(5)
 
-            num = str(cotizacion_id).zfill(5)
-
-            # 3. Generar PDF en memoria
+            # Generar PDF en memoria
             QApplication.setOverrideCursor(Qt.WaitCursor)
             try:
+                # LE PASAMOS LA VARIABLE "tipo" (que recibe generar_ticket) A "_pdf_bytes"
                 pdf_bytes = GeneradorTicket._pdf_bytes(
-                    empresa, maestro, detalles, cotizacion_id, logo_path
+                    empresa, maestro, detalles, id_referencia, logo_path, tipo
                 )
             finally:
                 QApplication.restoreOverrideCursor()
 
-            # 4. Preguntar al usuario
+            # Preguntar al usuario
             msg = QMessageBox(parent_widget)
-            msg.setWindowTitle("Finalizar Cotización")
-            msg.setIcon(QMessageBox.Question)
-            msg.setText(
-                f"Cotización {num} generada.\n\n¿Qué desea hacer?"
-            )
+            msg.setWindowTitle("Finalizar Ticket")
+            msg.setText(f"Ticket {num} ({tipo}) generado.\n\n¿Qué desea hacer?")
             btn_print   = msg.addButton("Imprimir Ticket", QMessageBox.ActionRole)
             btn_pdf     = msg.addButton("Guardar PDF",     QMessageBox.ActionRole)
             btn_preview = msg.addButton("Vista Previa",    QMessageBox.ActionRole)
@@ -389,94 +372,49 @@ class GeneradorTicket:
 
             clicked = msg.clickedButton()
 
-            # 5. Vista previa
             if clicked == btn_preview:
                 GeneradorTicket._previsualizar(parent_widget, pdf_bytes, num)
                 return
-
             if clicked == btn_close:
                 return
 
-            # 6. Guardar PDF
             if clicked == btn_pdf:
-                ruta, _ = QFileDialog.getSaveFileName(
-                    parent_widget,
-                    "Guardar Ticket PDF",
-                    f"Ticket_{num}.pdf",
-                    "Documento PDF (*.pdf)",
-                )
-                if not ruta:
-                    return
-                with open(ruta, "wb") as f:
-                    f.write(pdf_bytes)
+                ruta, _ = QFileDialog.getSaveFileName(parent_widget, "Guardar Ticket PDF", f"Ticket_{tipo}_{num}.pdf", "Documento PDF (*.pdf)")
+                if ruta:
+                    with open(ruta, "wb") as f: f.write(pdf_bytes)
+                    if sys.platform == "win32": os.startfile(ruta)
+                    elif sys.platform == "darwin": subprocess.call(["open", ruta])
+                    else: subprocess.call(["xdg-open", ruta])
 
-                # Abrir con visor del sistema
-                if sys.platform == "win32":
-                    os.startfile(ruta)
-                elif sys.platform == "darwin":
-                    subprocess.call(["open", ruta])
-                else:
-                    try:
-                        subprocess.call(["xdg-open", ruta])
-                    except Exception:
-                        pass
-
-            # 7. Imprimir directamente
-            # 7. Imprimir directamente (Con selección de impresora y SumatraPDF)
             elif clicked == btn_print:
-                
-                
-                # a) Mostrar diálogo para que el usuario elija su impresora
                 printer_obj = QPrinter()
                 dialog = QPrintDialog(printer_obj, parent_widget)
-                dialog.setWindowTitle("Seleccionar Impresora Térmica")
-                
-                # b) Si el usuario acepta y elige una impresora
                 if dialog.exec() == QPrintDialog.DialogCode.Accepted:
                     printer_name = printer_obj.printerName()
-                    
-                    # Guardamos el PDF temporalmente
                     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
                         tmp.write(pdf_bytes)
                         tmp_path = tmp.name
-
                     try:
                         if sys.platform == "win32":
-                            # Windows: Usar SumatraPDF empacado en nuestro ejecutable
                             sumatra_path = get_asset_path("assets/tools/SumatraPDF.exe").replace("/", "\\")
-                            
-                            if not os.path.exists(sumatra_path):
-                                QMessageBox.warning(parent_widget, "Error", "Motor de impresión (SumatraPDF) no encontrado.")
-                                return
-
-                            # Comando para imprimir silenciosamente en la impresora elegida
-                            cmd = [sumatra_path, "-print-to", printer_name, "-silent", tmp_path]
-                            
-                            # creationflags=0x08000000 oculta la consola negra de CMD en Windows
-                            subprocess.run(cmd, creationflags=0x08000000)
-                            
+                            if os.path.exists(sumatra_path):
+                                subprocess.run([sumatra_path, "-print-to", printer_name, "-silent", tmp_path], creationflags=0x08000000)
                         else:
-                            # Linux / macOS (Para que siga funcionando en tu entorno de desarrollo)
-                            result = subprocess.call(["lp", "-d", printer_name, tmp_path])
-                            if result != 0:
-                                subprocess.call(["xdg-open", tmp_path])
+                            subprocess.call(["lp", "-d", printer_name, tmp_path])
                     finally:
-                        time.sleep(2)
-                        try:
-                            os.unlink(tmp_path)
-                        except Exception:
-                            pass
+                        pass # El temporal lo limpia el SO luego
 
         except Exception as e:
-            if conn:
-                conn.close()
+            if conn: conn.close()
             QApplication.restoreOverrideCursor()
-            QMessageBox.critical(
-                parent_widget,
-                "Error Crítico",
-                f"Ocurrió un error al generar el ticket:\n\n{str(e)}",
-            )
+            QMessageBox.critical(parent_widget, "Error", f"Error al generar el ticket:\n{str(e)}")
 
+# ── Aliases internos ──────────────
+_hr     = GeneradorTicket._hr
+_izq    = GeneradorTicket._izq
+_der    = GeneradorTicket._der
+_centro = GeneradorTicket._centro
+_wrap   = GeneradorTicket._wrap
 
 # ── Aliases internos para usar dentro de _pdf_bytes ──────────────
 # (evita el self. dentro de un @staticmethod)

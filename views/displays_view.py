@@ -8,48 +8,100 @@ from PySide6.QtGui import QDoubleValidator, QIntValidator, QColor, QFont
 import qtawesome as qta
 from database.connection import get_connection
 from datetime import datetime
+# Agrégalo en la parte superior, junto a tus otras importaciones
+from views.generador_ticket import GeneradorTicket
 
 # ================= MODAL DE HISTORIAL DE VENTAS =================
 class HistorialVentasDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Historial de Ventas de Displays")
-        self.setFixedSize(750, 450)
+        self.setFixedSize(850, 450) # Lo hice un poco más ancho
         self.setStyleSheet("background-color: #1a1a1a; color: white;")
 
         layout = QVBoxLayout(self)
-
-        # Filtro por Mes
+        # ... (filtro de mes igual) ...
         lay_filtro = QHBoxLayout()
         lay_filtro.addWidget(QLabel("Filtrar por Mes:"))
-        
         self.cb_mes = QComboBox()
         self.cb_mes.setStyleSheet("background-color: #222; color: white; border: 1px solid #555; padding: 5px;")
-        
-        # Llenar combo con meses disponibles en la BD
         self.cargar_meses_disponibles()
         self.cb_mes.currentIndexChanged.connect(self.cargar_ventas)
         lay_filtro.addWidget(self.cb_mes)
         lay_filtro.addStretch()
         layout.addLayout(lay_filtro)
 
-        # Tabla de Historial
+        # TABLA ACTUALIZADA
         self.table_historial = QTableWidget()
-        self.table_historial.setColumnCount(6)
-        self.table_historial.setHorizontalHeaderLabels(["Fecha", "Usuario", "Display", "Cant.", "Precio U.", "Total"])
+        self.table_historial.setColumnCount(7) # Ahora son 7 columnas
+        self.table_historial.setHorizontalHeaderLabels(["ID Venta", "Fecha", "Cliente", "Display", "Cant.", "Total", "Acciones"])
         self.table_historial.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table_historial.verticalHeader().setVisible(False)
         self.table_historial.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table_historial.setStyleSheet("background-color: rgba(15,15,20,150); gridline-color: #444; border: 1px solid #555;")
         layout.addWidget(self.table_historial)
 
-        # Total del mes
         self.lbl_total_mes = QLabel("Total del Mes: $0.00")
         self.lbl_total_mes.setStyleSheet("font-size: 16px; font-weight: bold; color: #00e6e6;")
         self.lbl_total_mes.setAlignment(Qt.AlignRight)
         layout.addWidget(self.lbl_total_mes)
-
         self.cargar_ventas()
+
+    def cargar_ventas(self):
+        mes_seleccionado = self.cb_mes.currentData()
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            
+            # Agregamos v.id y v.cliente_nombre a la consulta
+            query = """
+                SELECT v.id, v.fecha_hora, v.cliente_nombre, d.marca || ' ' || d.modelo, v.cantidad, v.total 
+                FROM ventas_displays v
+                JOIN inventario_displays d ON v.display_id = d.id
+            """
+            params = []
+            if mes_seleccionado and mes_seleccionado != "TODOS":
+                query += " WHERE strftime('%Y-%m', v.fecha_hora) = ?"
+                params.append(mes_seleccionado)
+                
+            query += " ORDER BY v.fecha_hora DESC"
+            cursor.execute(query, params)
+            ventas = cursor.fetchall()
+            conn.close()
+
+            self.table_historial.setRowCount(0)
+            suma_total = 0.0
+
+            for idx, v in enumerate(ventas):
+                self.table_historial.insertRow(idx)
+                suma_total += v[5]
+                
+                f_str = v[1] # Simplificado por espacio
+                cliente = v[2] if v[2] else "Público en General"
+
+                items = [
+                    QTableWidgetItem(str(v[0])),
+                    QTableWidgetItem(f_str),
+                    QTableWidgetItem(cliente),
+                    QTableWidgetItem(v[3]),
+                    QTableWidgetItem(str(v[4])),
+                    QTableWidgetItem(f"${v[5]:.2f}")
+                ]
+                for col, item in enumerate(items):
+                    self.table_historial.setItem(idx, col, item)
+
+                # Agregar botón de Ticket
+                btn_ticket = QPushButton()
+                btn_ticket.setIcon(qta.icon('fa5s.receipt', color='#2077D4'))
+                btn_ticket.setCursor(Qt.PointingHandCursor)
+                btn_ticket.setStyleSheet("background: transparent; border: none;")
+                btn_ticket.clicked.connect(lambda *args, vid=v[0]: GeneradorTicket.generar_ticket(self.parent(), vid, "DISPLAY"))
+                
+                self.table_historial.setCellWidget(idx, 6, btn_ticket)
+
+            self.lbl_total_mes.setText(f"Total: ${suma_total:.2f}")
+        except Exception as e:
+            print("Error cargando historial:", e)
 
     def cargar_meses_disponibles(self):
         try:
@@ -72,60 +124,8 @@ class HistorialVentasDialog(QDialog):
         except Exception as e:
             print("Error cargando meses:", e)
 
-    def cargar_ventas(self):
-        mes_seleccionado = self.cb_mes.currentData()
-        
-        try:
-            conn = get_connection()
-            cursor = conn.cursor()
+    
 
-            query = """
-                SELECT v.fecha_hora, u.nombre, d.marca || ' ' || d.modelo, v.cantidad, v.precio_unitario, v.total 
-                FROM ventas_displays v
-                JOIN usuarios u ON v.usuario_id = u.id
-                JOIN inventario_displays d ON v.display_id = d.id
-            """
-            params = []
-
-            if mes_seleccionado and mes_seleccionado != "TODOS":
-                query += " WHERE strftime('%Y-%m', v.fecha_hora) = ?"
-                params.append(mes_seleccionado)
-                
-            query += " ORDER BY v.fecha_hora DESC"
-
-            cursor.execute(query, params)
-            ventas = cursor.fetchall()
-            conn.close()
-
-            self.table_historial.setRowCount(0)
-            suma_total = 0.0
-
-            for idx, v in enumerate(ventas):
-                self.table_historial.insertRow(idx)
-                suma_total += v[5]
-                
-                try:
-                    f_obj = datetime.strptime(v[0], "%Y-%m-%d %H:%M:%S")
-                    f_str = f"{f_obj.day}/{f_obj.month}/{f_obj.year} {f_obj.strftime('%H:%M')}"
-                except:
-                    f_str = v[0]
-
-                items = [
-                    QTableWidgetItem(f_str),
-                    QTableWidgetItem(v[1]),
-                    QTableWidgetItem(v[2]),
-                    QTableWidgetItem(str(v[3])),
-                    QTableWidgetItem(f"${v[4]:.2f}"),
-                    QTableWidgetItem(f"${v[5]:.2f}")
-                ]
-                
-                for col, item in enumerate(items):
-                    self.table_historial.setItem(idx, col, item)
-
-            self.lbl_total_mes.setText(f"Total: ${suma_total:.2f}")
-
-        except Exception as e:
-            print("Error cargando historial de ventas:", e)
 
 
 # ================= VISTA PRINCIPAL DE DISPLAYS =================
@@ -257,6 +257,8 @@ class DisplaysView(QWidget):
         self.layout_container.addWidget(self.table)
 
         # ================= 3. CREAR VENTA =================
+# ... (dentro de __init__ de DisplaysView) ...
+        # ================= 3. CREAR VENTA =================
         lbl_venta = QLabel("CREAR VENTA DE DISPLAY Y REDUCIR STOCK")
         lbl_venta.setStyleSheet("color: #ccc; font-weight: bold; font-size: 14px; margin-top: 10px;")
         self.layout_container.addWidget(lbl_venta)
@@ -267,6 +269,7 @@ class DisplaysView(QWidget):
         lay_venta.setContentsMargins(15, 15, 15, 15)
 
         estilo_bloqueado = "background-color: rgba(10,10,15,100); border: 1px solid #444; padding: 8px; color: #888;"
+        estilo_input = "background-color: rgba(10,10,15,150); border: 1px solid #555; padding: 8px; color: white;"
         
         self.txt_venta_marca = QLineEdit()
         self.txt_venta_marca.setReadOnly(True)
@@ -276,20 +279,24 @@ class DisplaysView(QWidget):
         self.txt_venta_modelo.setReadOnly(True)
         self.txt_venta_modelo.setStyleSheet(estilo_bloqueado)
 
+        # NUEVOS CAMPOS CLIENTE
+        self.txt_venta_cliente = QLineEdit()
+        self.txt_venta_cliente.setPlaceholderText("Opcional")
+        self.txt_venta_cliente.setStyleSheet(estilo_input)
+        
+        self.txt_venta_tel = QLineEdit()
+        self.txt_venta_tel.setPlaceholderText("Opcional")
+        self.txt_venta_tel.setStyleSheet(estilo_input)
+
         self.spin_cantidad = QSpinBox()
         self.spin_cantidad.setMinimum(1)
-        self.spin_cantidad.setStyleSheet("background-color: rgba(10,10,15,150); border: 1px solid #555; padding: 8px; color: white;")
+        self.spin_cantidad.setStyleSheet(estilo_input)
 
         self.radio_may = QRadioButton("Mayorista")
         self.radio_cli = QRadioButton("Cliente")
         self.radio_may.setStyleSheet("border: none; color: white;")
         self.radio_cli.setStyleSheet("border: none; color: white;")
         self.radio_may.setChecked(True)
-        
-        self.radio_group = QButtonGroup()
-        self.radio_group.addButton(self.radio_may)
-        self.radio_group.addButton(self.radio_cli)
-
         lay_radios = QHBoxLayout()
         lay_radios.addWidget(self.radio_may)
         lay_radios.addWidget(self.radio_cli)
@@ -302,14 +309,21 @@ class DisplaysView(QWidget):
         lay_venta.addWidget(self.spin_cantidad, 1, 2)
         lay_venta.addWidget(QLabel("Precio", styleSheet="border:none;"), 0, 3)
         lay_venta.addLayout(lay_radios, 1, 3)
+        
+        # Agregamos la fila del cliente abajo
+        lay_venta.addWidget(QLabel("Cliente:", styleSheet="border:none;"), 2, 0)
+        lay_venta.addWidget(self.txt_venta_cliente, 2, 1)
+        lay_venta.addWidget(QLabel("Teléfono:", styleSheet="border:none;"), 2, 2)
+        lay_venta.addWidget(self.txt_venta_tel, 2, 3)
 
-        self.btn_confirmar_venta = QPushButton("CONFIRMAR VENTA Y GUARDAR")
+        self.btn_confirmar_venta = QPushButton("CONFIRMAR VENTA, REDUCIR STOCK Y GENERAR TICKET")
         self.btn_confirmar_venta.setStyleSheet("background-color: #00e6e6; color: black; font-weight: bold; padding: 10px; border: none; border-radius: 3px;")
         self.btn_confirmar_venta.setCursor(Qt.PointingHandCursor)
         self.btn_confirmar_venta.clicked.connect(self.procesar_venta)
         self.btn_confirmar_venta.setEnabled(False)
-        lay_venta.addWidget(self.btn_confirmar_venta, 2, 0, 1, 4)
-
+        lay_venta.addWidget(self.btn_confirmar_venta, 3, 0, 1, 4)
+        # ...
+##########################################
         self.layout_container.addWidget(frame_venta)
         self.layout_container.addStretch()
         self.scroll_area.setWidget(self.container)
@@ -553,22 +567,18 @@ class DisplaysView(QWidget):
         self.btn_confirmar_venta.setEnabled(True)
 
     def procesar_venta(self):
-        if not self.display_seleccionado_id:
-            return
+        if not self.display_seleccionado_id: return
 
         self.spin_cantidad.clearFocus()
         cantidad_vender = self.spin_cantidad.value()
 
         if cantidad_vender > self.stock_disponible:
-            QMessageBox.warning(self, "Stock Insuficiente", 
-                                f"No puedes vender {cantidad_vender} piezas.\nSolo hay {self.stock_disponible} disponibles.")
+            QMessageBox.warning(self, "Stock Insuficiente", f"Solo hay {self.stock_disponible} disponibles.")
             self.spin_cantidad.setValue(self.stock_disponible)
             return
-            
-        if cantidad_vender <= 0:
-            QMessageBox.warning(self, "Cantidad Inválida", "La cantidad a vender debe ser al menos 1.")
-            return
 
+        cliente = self.txt_venta_cliente.text().strip()
+        telefono = self.txt_venta_tel.text().strip()
         tipo_precio = "Mayorista" if self.radio_may.isChecked() else "Cliente"
         precio_unitario = self.precio_may if tipo_precio == "Mayorista" else self.precio_pub
         total_venta = precio_unitario * cantidad_vender
@@ -578,7 +588,6 @@ class DisplaysView(QWidget):
 
         respuesta = QMessageBox.question(self, "Confirmar Venta", 
                                          f"¿Vender {cantidad_vender} Display(s) {marca} {modelo}?\n"
-                                         f"Precio unitario ({tipo_precio}): ${precio_unitario:.2f}\n"
                                          f"TOTAL: ${total_venta:.2f}", 
                                          QMessageBox.Yes | QMessageBox.No)
         
@@ -590,9 +599,11 @@ class DisplaysView(QWidget):
                 cursor.execute("UPDATE inventario_displays SET cantidad = cantidad - ? WHERE id = ?", (cantidad_vender, self.display_seleccionado_id))
                 
                 cursor.execute("""
-                    INSERT INTO ventas_displays (usuario_id, display_id, cantidad, precio_unitario, total, tipo_precio)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (self.usuario_id, self.display_seleccionado_id, cantidad_vender, precio_unitario, total_venta, tipo_precio))
+                    INSERT INTO ventas_displays (usuario_id, display_id, cantidad, precio_unitario, total, tipo_precio, cliente_nombre, cliente_telefono)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (self.usuario_id, self.display_seleccionado_id, cantidad_vender, precio_unitario, total_venta, tipo_precio, cliente, telefono))
+                
+                venta_id = cursor.lastrowid # Extraemos el ID de la venta generada
 
                 log_msg = f"Vendió {cantidad_vender} display(s) {marca} {modelo} (Total: ${total_venta:.2f})"
                 cursor.execute("""
@@ -603,14 +614,19 @@ class DisplaysView(QWidget):
                 conn.commit()
                 conn.close()
 
+                # Limpiar UI
                 self.display_seleccionado_id = None
                 self.txt_venta_marca.clear()
                 self.txt_venta_modelo.clear()
+                self.txt_venta_cliente.clear()
+                self.txt_venta_tel.clear()
                 self.spin_cantidad.setValue(1)
                 self.btn_confirmar_venta.setEnabled(False)
-                
                 self.cargar_datos()
-                QMessageBox.information(self, "Venta Exitosa", f"Se han descontado {cantidad_vender} piezas del inventario.")
+
+                # --- LANZAR EL GENERADOR DE TICKETS ---
+                GeneradorTicket.generar_ticket(self, venta_id, "DISPLAY")
 
             except Exception as e:
                 QMessageBox.critical(self, "Error BD", f"Error procesando venta:\n{e}")
+

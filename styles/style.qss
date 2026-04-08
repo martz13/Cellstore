@@ -124,3 +124,27 @@ QHeaderView::section {
 QTableWidget::item:selected {
     background-color: rgba(32, 119, 212, 150);
 }
+
+/* ===== MENSAJES (QMessageBox) ===== */
+
+QMessageBox {
+    background-color: #1e1e1e;
+    color: #ffffff;
+}
+
+QMessageBox QLabel {
+    color: #ffffff;
+    font-size: 14px;
+}
+
+QMessageBox QPushButton {
+    background-color: #2077D4;
+    color: white;
+    border-radius: 5px;
+    padding: 6px 12px;
+    min-width: 80px;
+}
+
+QMessageBox QPushButton:hover {
+    background-color: #1a5ea8;
+}
