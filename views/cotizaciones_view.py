@@ -168,7 +168,13 @@ class CotizacionesView(QWidget):
                     QTableWidgetItem(f"${cot[4]:.2f}"),
                     QTableWidgetItem(f"${cot[5]:.2f}")
                 ]
+                
+                # --- NUEVO: Generar y aplicar el Tooltip a todas las celdas de esta fila ---
+                # cot[0] es el ID, cot[4] es el Precio Total en la consulta de HOY
+                tooltip_html = self.generar_tooltip_cotizacion(cot[0], cot[4])
+                
                 for col, item in enumerate(items):
+                    item.setToolTip(tooltip_html) # Aplicamos el Tooltip interactivo
                     self.table_hoy.setItem(idx, col, item)
 
                 # Acciones (Hoy: Ticket, PDF, Editar)
@@ -308,7 +314,13 @@ class CotizacionesView(QWidget):
                 QTableWidgetItem(f"${cot[5]:.2f}"),
                 QTableWidgetItem(f"${cot[6]:.2f}")
             ]
+            
+            # --- NUEVO: Generar y aplicar el Tooltip al Historial ---
+            # cot[1] es el ID, cot[5] es el Precio Total en la consulta de HISTORIAL
+            tooltip_html = self.generar_tooltip_cotizacion(cot[1], cot[5])
+            
             for col, item in enumerate(items):
+                item.setToolTip(tooltip_html) # Aplicamos el Tooltip interactivo
                 tabla.setItem(idx, col, item)
 
             # Acciones (Historial: SOLO Ticket y PDF)
@@ -343,3 +355,30 @@ class CotizacionesView(QWidget):
 
         self.historial_layout.addWidget(btn_header)
         self.historial_layout.addWidget(tabla_contenedor)
+    def generar_tooltip_cotizacion(self, cotizacion_id, total_cotizacion):
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT marca, modelo, trabajo_a_realizar, precio_cliente FROM cotizaciones_detalle WHERE cotizacion_id = ?", (cotizacion_id,))
+            detalles = cursor.fetchall()
+            conn.close()
+
+            html = "<div style='background-color: rgba(20, 20, 25, 250); padding: 10px; border: 2px solid #2077D4; border-radius: 5px;'>"
+            html += "<h3 style='color: #2077D4; margin-top: 0; margin-bottom: 8px;'>🛠️ Trabajos a Realizar</h3>"
+            
+            for det in detalles:
+                equipo = f"{det[0]} {det[1]}"
+                # Reemplazamos los saltos de línea de la BD por la etiqueta HTML <br>
+                trabajo = det[2].replace('\n', '<br>')
+                precio = det[3]
+                
+                html += f"<p style='color: #f0ad4e; margin: 2px 0px 0px 0px;'><b>{equipo}</b></p>"
+                html += f"<p style='color: white; margin: 0px 0px 5px 10px;'>• {trabajo} <b><span style='color:#00e6e6;'>(${precio:.2f})</span></b></p>"
+                
+            html += "<hr style='border: 1px solid #555;'>"
+            html += f"<h4 style='color: #00e6e6; margin: 2px;'>TOTAL DE LA COTIZACIÓN: ${total_cotizacion:.2f}</h4>"
+            html += "</div>"
+            
+            return html
+        except Exception as e:
+            return "<div style='color: red;'>Error al cargar los detalles.</div>"
